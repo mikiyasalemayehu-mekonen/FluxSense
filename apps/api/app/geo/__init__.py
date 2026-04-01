@@ -1,4 +1,2 @@
-# packages/geo/__init__.py
-
 from .processor import GeoProcessor
 from .reprojector import reproject_bbox
