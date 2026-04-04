@@ -24,3 +24,26 @@ class TileResponse(BaseModel):
     acquired_at: Optional[str]
     status: str          # "ready" | "processing" | "error"
     message: Optional[str]
+
+class SegmentationSummary(BaseModel):
+    result_id: str
+    dominant_class: str
+    class_coverage: dict
+    colored_mask_url: str
+
+class DetectionSummary(BaseModel):
+    result_id: str
+    object_count: int
+    infrastructure_count: int
+    detections: list[dict]
+
+class TileAnalysisResponse(BaseModel):
+    tile_id: str
+    bbox: BoundingBox
+    image_url: Optional[str]
+    preview_url: Optional[str]
+    acquired_at: Optional[str]
+    status: str
+    message: Optional[str]
+    segmentation: Optional[SegmentationSummary]
+    detection: Optional[DetectionSummary]
