@@ -17,10 +17,11 @@ AsyncSessionLocal = sessionmaker(
 
 Base = declarative_base()
 
+
 async def init_db():
-    """Run each statement separately — asyncpg doesn't allow multi-statement strings."""
     statements = [
         "CREATE EXTENSION IF NOT EXISTS postgis",
+
         """
         CREATE TABLE IF NOT EXISTS satellite_tiles (
             id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -41,12 +42,41 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_tiles_acquired
             ON satellite_tiles (acquired_at)
         """,
+
+        """
+        CREATE TABLE IF NOT EXISTS segmentation_results (
+            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tile_id         UUID REFERENCES satellite_tiles(id) ON DELETE CASCADE,
+            model_name      TEXT NOT NULL,
+            mask_file_path  TEXT NOT NULL,
+            class_coverage  JSONB,      -- % of tile per land-cover class
+            dominant_class  TEXT,
+            created_at      TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_seg_tile_id
+            ON segmentation_results (tile_id)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS detection_results (
+            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tile_id         UUID REFERENCES satellite_tiles(id) ON DELETE CASCADE,
+            model_name      TEXT NOT NULL,
+            detections      JSONB,      -- array of {label, score, bbox_px}
+            object_count    INTEGER,
+            created_at      TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_det_tile_id
+            ON detection_results (tile_id)
+        """,
     ]
 
     async with engine.begin() as conn:
         for statement in statements:
             await conn.execute(text(statement))
-
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
