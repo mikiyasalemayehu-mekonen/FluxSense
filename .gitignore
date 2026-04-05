@@ -4,4 +4,4 @@ __pycache__/
 .DS_Store
 node_modules/
 *.egg-info/
-.venv/
+.venv/apps/api/data/

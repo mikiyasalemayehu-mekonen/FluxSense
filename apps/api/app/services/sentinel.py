@@ -1,31 +1,36 @@
-# apps/api/app/services/sentinel.py  (full file)
+# apps/api/app/services/sentinel.py
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
-from app.models.satellite import TileRequest, TileAnalysisResponse, BoundingBox
-from app.models.satellite import SegmentationSummary, DetectionSummary
+from app.models.satellite import (
+    TileRequest, TileAnalysisResponse, BoundingBox,
+    SegmentationSummary, DetectionSummary, NLPSummary
+)
 from app.services.tile_repository import TileRepository
 from app.services.analysis_repository import AnalysisRepository
+from app.services.report_fetcher import ReportFetcher
+from app.services.nlp_repository import NLPRepository
 from app.geo.processor import GeoProcessor
 from app.ml.segmentor import Segmentor
 from app.ml.detector import Detector
+from app.ml.nlp import NLPAnalyser
 
 SENTINEL_AUTH_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
 SENTINEL_PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process"
 
-# Instantiate models once — they cache themselves on first use
 _segmentor = Segmentor()
 _detector  = Detector()
+_nlp       = NLPAnalyser()
 
 
 class SentinelService:
 
     def __init__(self, db: AsyncSession):
-        self.db           = db
-        self.tile_repo    = TileRepository(db)
+        self.db            = db
+        self.tile_repo     = TileRepository(db)
         self.analysis_repo = AnalysisRepository(db)
-        self.geo          = GeoProcessor(output_dir="data/tiles")
+        self.geo           = GeoProcessor(output_dir="data/tiles")
 
     async def _get_access_token(self) -> str:
         async with httpx.AsyncClient() as client:
@@ -41,7 +46,7 @@ class SentinelService:
             return resp.json()["access_token"]
 
     async def fetch_and_analyse(self, request: TileRequest) -> TileAnalysisResponse:
-        bbox = request.bbox
+        bbox  = request.bbox
         token = await self._get_access_token()
 
         payload = {
@@ -78,7 +83,7 @@ class SentinelService:
         }
 
         try:
-            # ── 1. Fetch satellite tile ────────────────────────────────
+            # ── 1. Fetch satellite tile ───────────────────────────────
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
                     SENTINEL_PROCESS_URL,
@@ -88,13 +93,12 @@ class SentinelService:
                 resp.raise_for_status()
                 raw_bytes = resp.content
 
-            # ── 2. Geo-process → GeoTIFF + preview PNG ────────────────
+            # ── 2. Geo-process ────────────────────────────────────────
             processed = self.geo.process(
                 raw_bytes,
                 bbox.min_lon, bbox.min_lat,
                 bbox.max_lon, bbox.max_lat,
             )
-
             await self.tile_repo.save_tile(
                 tile_id=processed.tile_id,
                 wkt_polygon=processed.wkt_polygon,
@@ -104,7 +108,7 @@ class SentinelService:
                 band_stats=processed.band_stats,
             )
 
-            base_url = "http://localhost:8000/tiles"
+            base_url    = "http://localhost:8000/tiles"
             preview_url = f"{base_url}/{processed.tile_id}_preview.png"
 
             # ── 3. Segmentation ───────────────────────────────────────
@@ -135,6 +139,21 @@ class SentinelService:
                 detections=det_result.detections,
             )
 
+            # ── 5. NLP: fetch reports + summarize ─────────────────────
+            fetcher    = ReportFetcher()
+            reports    = await fetcher.fetch_all(bbox)
+            nlp_result = _nlp.analyse(reports)
+
+            nlp_repo = NLPRepository(self.db)
+            await nlp_repo.save(processed.tile_id, nlp_result)
+
+            nlp_summary = NLPSummary(
+                summary=nlp_result.summary,
+                event_type=nlp_result.event_type,
+                event_confidence=nlp_result.event_confidence,
+                sources=nlp_result.sources,
+            )
+
             return TileAnalysisResponse(
                 tile_id=processed.tile_id,
                 bbox=bbox,
@@ -142,10 +161,14 @@ class SentinelService:
                 preview_url=preview_url,
                 acquired_at=str(request.date_from),
                 status="ready",
-                message=f"Tile processed. Dominant land cover: {seg_result.dominant_class}. "
-                        f"Objects detected: {det_result.object_count}.",
+                message=(
+                    f"Tile processed. Land cover: {seg_result.dominant_class}. "
+                    f"Event type: {nlp_result.event_type} "
+                    f"({round(nlp_result.event_confidence * 100)}% confidence)."
+                ),
                 segmentation=seg_summary,
                 detection=det_summary,
+                nlp=nlp_summary,
             )
 
         except httpx.HTTPStatusError as e:
@@ -159,4 +182,5 @@ class SentinelService:
                 message=f"Sentinel API error: {e.response.status_code}",
                 segmentation=None,
                 detection=None,
+                nlp=None,
             )

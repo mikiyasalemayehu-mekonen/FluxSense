@@ -72,6 +72,22 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_det_tile_id
             ON detection_results (tile_id)
         """,
+        """
+        CREATE TABLE IF NOT EXISTS nlp_results (
+            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tile_id         UUID REFERENCES satellite_tiles(id) ON DELETE CASCADE,
+            sources         JSONB,        -- list of report URLs/titles fetched
+            summary         TEXT,         -- BART-generated situation brief
+            event_type      TEXT,         -- zero-shot classified label
+            event_confidence FLOAT,
+            raw_texts       JSONB,        -- original report excerpts
+            created_at      TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_nlp_tile_id
+            ON nlp_results (tile_id)
+        """,
     ]
 
     async with engine.begin() as conn:
