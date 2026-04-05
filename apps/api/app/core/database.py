@@ -88,6 +88,33 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_nlp_tile_id
             ON nlp_results (tile_id)
         """,
+        """
+        CREATE TABLE IF NOT EXISTS risk_scores (
+            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tile_id         UUID REFERENCES satellite_tiles(id) ON DELETE CASCADE,
+            bbox            GEOMETRY(Polygon, 4326) NOT NULL,
+            overall_score   FLOAT NOT NULL,
+            vegetation_score FLOAT,
+            water_score     FLOAT,
+            urban_exposure  FLOAT,
+            event_score     FLOAT,
+            trend           TEXT,
+            acquired_at     DATE NOT NULL,
+            created_at      TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_risk_tile_id
+            ON risk_scores (tile_id)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_risk_bbox
+            ON risk_scores USING GIST (bbox)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_risk_acquired
+            ON risk_scores (acquired_at)
+        """,
     ]
 
     async with engine.begin() as conn:

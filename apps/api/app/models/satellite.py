@@ -59,15 +59,45 @@ class QAResponse(BaseModel):
     score: float
     context_used: str
 
-# Update TileAnalysisResponse to include nlp field
+
+
+class RiskBreakdown(BaseModel):
+    overall_score:    float
+    label:            str
+    trend:            str
+    vegetation_score: float
+    water_score:      float
+    urban_exposure:   float
+    event_score:      float
+    explanation:      str
+
+class ForecastPoint(BaseModel):
+    date:  str
+    score: float
+
+class RiskForecast(BaseModel):
+    points:         list[ForecastPoint]
+    trend:          str
+    peak_risk_date: Optional[str]
+    confidence:     str
+
+class RiskResponse(BaseModel):
+    tile_id:  str
+    bbox:     BoundingBox
+    current:  RiskBreakdown
+    forecast: RiskForecast
+    history:  list[dict]
+
+# Add risk field to TileAnalysisResponse
 class TileAnalysisResponse(BaseModel):
-    tile_id: str
-    bbox: BoundingBox
-    image_url: Optional[str]
+    tile_id:     str
+    bbox:        BoundingBox
+    image_url:   Optional[str]
     preview_url: Optional[str]
     acquired_at: Optional[str]
-    status: str
-    message: Optional[str]
+    status:      str
+    message:     Optional[str]
     segmentation: Optional[SegmentationSummary]
-    detection: Optional[DetectionSummary]
-    nlp: Optional[NLPSummary]          # ← new
+    detection:    Optional[DetectionSummary]
+    nlp:          Optional[NLPSummary]
+    risk:         Optional[RiskBreakdown]     # ← new
