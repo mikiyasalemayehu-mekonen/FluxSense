@@ -15,6 +15,9 @@ from app.geo.processor import GeoProcessor
 from app.ml.segmentor import Segmentor
 from app.ml.detector import Detector
 from app.ml.nlp import NLPAnalyser
+from app.services.risk_engine import RiskEngine
+from app.services.risk_repository import RiskRepository
+from app.models.satellite import RiskBreakdown
 
 SENTINEL_AUTH_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
 SENTINEL_PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process"
@@ -22,6 +25,7 @@ SENTINEL_PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process"
 _segmentor = Segmentor()
 _detector  = Detector()
 _nlp       = NLPAnalyser()
+_risk       = RiskEngine()
 
 
 class SentinelService:
@@ -153,6 +157,39 @@ class SentinelService:
                 event_confidence=nlp_result.event_confidence,
                 sources=nlp_result.sources,
             )
+            # ── 6. Risk scoring ───────────────────────────────────────
+            risk_repo = RiskRepository(self.db)
+            history   = await risk_repo.get_history_for_bbox(
+                bbox.min_lon, bbox.min_lat,
+                bbox.max_lon, bbox.max_lat,
+            )
+            historical_scores = [h["overall_score"] for h in history]
+
+            risk_result = _risk.compute(
+                class_coverage=seg_result.class_coverage,
+                event_type=nlp_result.event_type,
+                event_confidence=nlp_result.event_confidence,
+                historical_scores=historical_scores,
+            )
+
+            # Get the wkt from the processed tile
+            await risk_repo.save(
+                tile_id=processed.tile_id,
+                wkt_polygon=processed.wkt_polygon,
+                score=risk_result,
+                acquired_at=request.date_from,
+            )
+
+            risk_breakdown = RiskBreakdown(
+                overall_score=risk_result.overall_score,
+                label=risk_result.label,
+                trend=risk_result.trend,
+                vegetation_score=risk_result.vegetation_score,
+                water_score=risk_result.water_score,
+                urban_exposure=risk_result.urban_exposure,
+                event_score=risk_result.event_score,
+                explanation=risk_result.explanation,
+            )
 
             return TileAnalysisResponse(
                 tile_id=processed.tile_id,
@@ -171,16 +208,24 @@ class SentinelService:
                 nlp=nlp_summary,
             )
 
+
+
         except httpx.HTTPStatusError as e:
             return TileAnalysisResponse(
-                tile_id="error",
+                tile_id=processed.tile_id,
                 bbox=bbox,
-                image_url=None,
-                preview_url=None,
-                acquired_at=None,
-                status="error",
-                message=f"Sentinel API error: {e.response.status_code}",
-                segmentation=None,
-                detection=None,
-                nlp=None,
+                image_url=preview_url,
+                preview_url=preview_url,
+                acquired_at=str(request.date_from),
+                status="ready",
+                message=(
+                    f"Risk: {risk_result.label.upper()} "
+                    f"({risk_result.overall_score}/100). "
+                    f"Land cover: {seg_result.dominant_class}. "
+                    f"Event: {nlp_result.event_type}."
+                ),
+                segmentation=seg_summary,
+                detection=det_summary,
+                nlp=nlp_summary,
+                risk=risk_breakdown,
             )
