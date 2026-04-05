@@ -47,3 +47,27 @@ class TileAnalysisResponse(BaseModel):
     message: Optional[str]
     segmentation: Optional[SegmentationSummary]
     detection: Optional[DetectionSummary]
+class NLPSummary(BaseModel):
+    summary: str
+    event_type: str
+    event_confidence: float
+    sources: list[dict]
+
+class QAResponse(BaseModel):
+    question: str
+    answer: str
+    score: float
+    context_used: str
+
+# Update TileAnalysisResponse to include nlp field
+class TileAnalysisResponse(BaseModel):
+    tile_id: str
+    bbox: BoundingBox
+    image_url: Optional[str]
+    preview_url: Optional[str]
+    acquired_at: Optional[str]
+    status: str
+    message: Optional[str]
+    segmentation: Optional[SegmentationSummary]
+    detection: Optional[DetectionSummary]
+    nlp: Optional[NLPSummary]          # ← new
