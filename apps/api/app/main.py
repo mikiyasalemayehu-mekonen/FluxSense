@@ -25,7 +25,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://fluxsense.vercel.app",
+        "https://*.vercel.app",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
