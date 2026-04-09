@@ -1,6 +1,6 @@
 // apps/web/components/RiskCard.tsx
 
-import { TileAnalysis } from "@/lib/api";
+import { TileAnalysis } from "@/app/lib/api";
 import { Droplets, Trees, Building2, Zap } from "lucide-react";
 import clsx from "clsx";
 
