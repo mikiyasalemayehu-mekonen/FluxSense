@@ -1,7 +1,7 @@
 // apps/web/components/RiskCard.tsx
 
 import { TileAnalysis } from "@/lib/api";
-import { AlertTriangle, Droplets, Trees, Building2, Zap } from "lucide-react";
+import { Droplets, Trees, Building2, Zap } from "lucide-react";
 import clsx from "clsx";
 
 const LABEL_COLORS: Record<string, string> = {
