@@ -5,19 +5,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.satellite import (
     TileRequest, TileAnalysisResponse, BoundingBox,
-    SegmentationSummary, DetectionSummary, NLPSummary
+    SegmentationSummary, DetectionSummary, NLPSummary, RiskBreakdown
 )
 from app.services.tile_repository import TileRepository
 from app.services.analysis_repository import AnalysisRepository
 from app.services.report_fetcher import ReportFetcher
 from app.services.nlp_repository import NLPRepository
+from app.services.risk_engine import RiskEngine
+from app.services.risk_repository import RiskRepository
 from app.geo.processor import GeoProcessor
 from app.ml.segmentor import Segmentor
 from app.ml.detector import Detector
 from app.ml.nlp import NLPAnalyser
-from app.services.risk_engine import RiskEngine
-from app.services.risk_repository import RiskRepository
-from app.models.satellite import RiskBreakdown
+import os
 
 SENTINEL_AUTH_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
 SENTINEL_PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process"
@@ -25,7 +25,7 @@ SENTINEL_PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process"
 _segmentor = Segmentor()
 _detector  = Detector()
 _nlp       = NLPAnalyser()
-_risk       = RiskEngine()
+_risk      = RiskEngine()
 
 
 class SentinelService:
@@ -48,6 +48,10 @@ class SentinelService:
             )
             resp.raise_for_status()
             return resp.json()["access_token"]
+
+    def _get_base_url(self) -> str:
+        """Return the correct base URL for tile images depending on environment."""
+        return os.getenv("TILES_BASE_URL", "http://localhost:8000/tiles")
 
     async def fetch_and_analyse(self, request: TileRequest) -> TileAnalysisResponse:
         bbox  = request.bbox
@@ -103,6 +107,7 @@ class SentinelService:
                 bbox.min_lon, bbox.min_lat,
                 bbox.max_lon, bbox.max_lat,
             )
+
             await self.tile_repo.save_tile(
                 tile_id=processed.tile_id,
                 wkt_polygon=processed.wkt_polygon,
@@ -110,9 +115,13 @@ class SentinelService:
                 resolution_m=request.resolution,
                 file_path=processed.file_path,
                 band_stats=processed.band_stats,
+                min_lon=bbox.min_lon,
+                min_lat=bbox.min_lat,
+                max_lon=bbox.max_lon,
+                max_lat=bbox.max_lat,
             )
 
-            base_url    = "http://localhost:8000/tiles"
+            base_url    = self._get_base_url()
             preview_url = f"{base_url}/{processed.tile_id}_preview.png"
 
             # ── 3. Segmentation ───────────────────────────────────────
@@ -157,6 +166,7 @@ class SentinelService:
                 event_confidence=nlp_result.event_confidence,
                 sources=nlp_result.sources,
             )
+
             # ── 6. Risk scoring ───────────────────────────────────────
             risk_repo = RiskRepository(self.db)
             history   = await risk_repo.get_history_for_bbox(
@@ -172,12 +182,15 @@ class SentinelService:
                 historical_scores=historical_scores,
             )
 
-            # Get the wkt from the processed tile
             await risk_repo.save(
                 tile_id=processed.tile_id,
                 wkt_polygon=processed.wkt_polygon,
                 score=risk_result,
                 acquired_at=request.date_from,
+                min_lon=bbox.min_lon,
+                min_lat=bbox.min_lat,
+                max_lon=bbox.max_lon,
+                max_lat=bbox.max_lat,
             )
 
             risk_breakdown = RiskBreakdown(
@@ -199,26 +212,6 @@ class SentinelService:
                 acquired_at=str(request.date_from),
                 status="ready",
                 message=(
-                    f"Tile processed. Land cover: {seg_result.dominant_class}. "
-                    f"Event type: {nlp_result.event_type} "
-                    f"({round(nlp_result.event_confidence * 100)}% confidence)."
-                ),
-                segmentation=seg_summary,
-                detection=det_summary,
-                nlp=nlp_summary,
-            )
-
-
-
-        except httpx.HTTPStatusError as e:
-            return TileAnalysisResponse(
-                tile_id=processed.tile_id,
-                bbox=bbox,
-                image_url=preview_url,
-                preview_url=preview_url,
-                acquired_at=str(request.date_from),
-                status="ready",
-                message=(
                     f"Risk: {risk_result.label.upper()} "
                     f"({risk_result.overall_score}/100). "
                     f"Land cover: {seg_result.dominant_class}. "
@@ -228,4 +221,19 @@ class SentinelService:
                 detection=det_summary,
                 nlp=nlp_summary,
                 risk=risk_breakdown,
+            )
+
+        except httpx.HTTPStatusError as e:
+            return TileAnalysisResponse(
+                tile_id="error",
+                bbox=bbox,
+                image_url=None,
+                preview_url=None,
+                acquired_at=None,
+                status="error",
+                message=f"Sentinel API error: {e.response.status_code}",
+                segmentation=None,
+                detection=None,
+                nlp=None,
+                risk=None,
             )

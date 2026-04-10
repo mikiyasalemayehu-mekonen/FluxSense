@@ -1,4 +1,4 @@
-# apps/api/app/services/risk_repository.py
+
 
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,23 +18,28 @@ class RiskRepository:
         wkt_polygon: str,
         score: RiskScore,
         acquired_at: date,
+        min_lon: float = 0,
+        min_lat: float = 0,
+        max_lon: float = 0,
+        max_lat: float = 0,
     ) -> str:
         sql = text("""
             INSERT INTO risk_scores
-                (tile_id, bbox, overall_score, vegetation_score,
-                 water_score, urban_exposure, event_score,
-                 trend, acquired_at)
+                (tile_id, min_lon, min_lat, max_lon, max_lat,
+                 overall_score, vegetation_score, water_score,
+                 urban_exposure, event_score, trend, acquired_at)
             VALUES
-                (:tile_id,
-                 ST_GeomFromText(:wkt, 4326),
-                 :overall_score, :vegetation_score,
-                 :water_score, :urban_exposure, :event_score,
-                 :trend, :acquired_at)
+                (:tile_id, :min_lon, :min_lat, :max_lon, :max_lat,
+                 :overall_score, :vegetation_score, :water_score,
+                 :urban_exposure, :event_score, :trend, :acquired_at)
             RETURNING id
         """)
         r = await self.db.execute(sql, {
             "tile_id":          tile_id,
-            "wkt":              wkt_polygon,
+            "min_lon":          min_lon,
+            "min_lat":          min_lat,
+            "max_lon":          max_lon,
+            "max_lat":          max_lat,
             "overall_score":    score.overall_score,
             "vegetation_score": score.vegetation_score,
             "water_score":      score.water_score,
@@ -52,32 +57,19 @@ class RiskRepository:
         max_lon: float, max_lat: float,
         limit: int = 30,
     ) -> list[dict]:
-        """Get historical risk scores for a geographic area."""
         sql = text("""
-            SELECT
-                r.id,
-                r.tile_id,
-                r.overall_score,
-                r.vegetation_score,
-                r.water_score,
-                r.urban_exposure,
-                r.event_score,
-                r.trend,
-                r.acquired_at,
-                r.created_at
-            FROM risk_scores r
-            WHERE ST_Intersects(
-                r.bbox,
-                ST_MakeEnvelope(:min_lon, :min_lat, :max_lon, :max_lat, 4326)
-            )
-            ORDER BY r.acquired_at DESC
+            SELECT id, tile_id, overall_score, vegetation_score,
+                   water_score, urban_exposure, event_score,
+                   trend, acquired_at, created_at
+            FROM risk_scores
+            WHERE min_lon <= :max_lon AND max_lon >= :min_lon
+              AND min_lat <= :max_lat AND max_lat >= :min_lat
+            ORDER BY acquired_at DESC
             LIMIT :limit
         """)
         result = await self.db.execute(sql, {
-            "min_lon": min_lon,
-            "min_lat": min_lat,
-            "max_lon": max_lon,
-            "max_lat": max_lat,
+            "min_lon": min_lon, "min_lat": min_lat,
+            "max_lon": max_lon, "max_lat": max_lat,
             "limit":   limit,
         })
         return [dict(row._mapping) for row in result]

@@ -20,12 +20,15 @@ Base = declarative_base()
 
 async def init_db():
     statements = [
-        "CREATE EXTENSION IF NOT EXISTS postgis",
-
+        # No PostGIS — store bbox as plain text WKT
         """
         CREATE TABLE IF NOT EXISTS satellite_tiles (
             id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            bbox            GEOMETRY(Polygon, 4326) NOT NULL,
+            bbox_wkt        TEXT NOT NULL,
+            min_lon         FLOAT NOT NULL,
+            min_lat         FLOAT NOT NULL,
+            max_lon         FLOAT NOT NULL,
+            max_lat         FLOAT NOT NULL,
             acquired_at     DATE NOT NULL,
             resolution_m    INTEGER NOT NULL,
             cloud_coverage  FLOAT,
@@ -35,21 +38,16 @@ async def init_db():
         )
         """,
         """
-        CREATE INDEX IF NOT EXISTS idx_tiles_bbox
-            ON satellite_tiles USING GIST (bbox)
-        """,
-        """
         CREATE INDEX IF NOT EXISTS idx_tiles_acquired
             ON satellite_tiles (acquired_at)
         """,
-
         """
         CREATE TABLE IF NOT EXISTS segmentation_results (
             id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tile_id         UUID REFERENCES satellite_tiles(id) ON DELETE CASCADE,
             model_name      TEXT NOT NULL,
             mask_file_path  TEXT NOT NULL,
-            class_coverage  JSONB,      -- % of tile per land-cover class
+            class_coverage  JSONB,
             dominant_class  TEXT,
             created_at      TIMESTAMPTZ DEFAULT NOW()
         )
@@ -63,7 +61,7 @@ async def init_db():
             id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             tile_id         UUID REFERENCES satellite_tiles(id) ON DELETE CASCADE,
             model_name      TEXT NOT NULL,
-            detections      JSONB,      -- array of {label, score, bbox_px}
+            detections      JSONB,
             object_count    INTEGER,
             created_at      TIMESTAMPTZ DEFAULT NOW()
         )
@@ -74,14 +72,14 @@ async def init_db():
         """,
         """
         CREATE TABLE IF NOT EXISTS nlp_results (
-            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            tile_id         UUID REFERENCES satellite_tiles(id) ON DELETE CASCADE,
-            sources         JSONB,        -- list of report URLs/titles fetched
-            summary         TEXT,         -- BART-generated situation brief
-            event_type      TEXT,         -- zero-shot classified label
+            id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tile_id          UUID REFERENCES satellite_tiles(id) ON DELETE CASCADE,
+            sources          JSONB,
+            summary          TEXT,
+            event_type       TEXT,
             event_confidence FLOAT,
-            raw_texts       JSONB,        -- original report excerpts
-            created_at      TIMESTAMPTZ DEFAULT NOW()
+            raw_texts        JSONB,
+            created_at       TIMESTAMPTZ DEFAULT NOW()
         )
         """,
         """
@@ -90,26 +88,25 @@ async def init_db():
         """,
         """
         CREATE TABLE IF NOT EXISTS risk_scores (
-            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            tile_id         UUID REFERENCES satellite_tiles(id) ON DELETE CASCADE,
-            bbox            GEOMETRY(Polygon, 4326) NOT NULL,
-            overall_score   FLOAT NOT NULL,
+            id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tile_id          UUID REFERENCES satellite_tiles(id) ON DELETE CASCADE,
+            min_lon          FLOAT NOT NULL,
+            min_lat          FLOAT NOT NULL,
+            max_lon          FLOAT NOT NULL,
+            max_lat          FLOAT NOT NULL,
+            overall_score    FLOAT NOT NULL,
             vegetation_score FLOAT,
-            water_score     FLOAT,
-            urban_exposure  FLOAT,
-            event_score     FLOAT,
-            trend           TEXT,
-            acquired_at     DATE NOT NULL,
-            created_at      TIMESTAMPTZ DEFAULT NOW()
+            water_score      FLOAT,
+            urban_exposure   FLOAT,
+            event_score      FLOAT,
+            trend            TEXT,
+            acquired_at      DATE NOT NULL,
+            created_at       TIMESTAMPTZ DEFAULT NOW()
         )
         """,
         """
         CREATE INDEX IF NOT EXISTS idx_risk_tile_id
             ON risk_scores (tile_id)
-        """,
-        """
-        CREATE INDEX IF NOT EXISTS idx_risk_bbox
-            ON risk_scores USING GIST (bbox)
         """,
         """
         CREATE INDEX IF NOT EXISTS idx_risk_acquired
