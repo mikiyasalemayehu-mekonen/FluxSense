@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from datetime import date
 
+
 class TileRepository:
 
     def __init__(self, db: AsyncSession):
@@ -19,24 +20,28 @@ class TileRepository:
         file_path: str,
         band_stats: dict,
         cloud_coverage: float | None = None,
+        min_lon: float = 0,
+        min_lat: float = 0,
+        max_lon: float = 0,
+        max_lat: float = 0,
     ) -> str:
         sql = text("""
             INSERT INTO satellite_tiles
-                (id, bbox, acquired_at, resolution_m, file_path, band_stats, cloud_coverage)
+                (id, bbox_wkt, min_lon, min_lat, max_lon, max_lat,
+                 acquired_at, resolution_m, file_path, band_stats, cloud_coverage)
             VALUES
-                (:id,
-                 ST_GeomFromText(:wkt, 4326),
-                 :acquired_at,
-                 :resolution_m,
-                 :file_path,
-                 CAST(:band_stats AS JSONB),
-                 :cloud_coverage)
+                (:id, :wkt, :min_lon, :min_lat, :max_lon, :max_lat,
+                 :acquired_at, :resolution_m, :file_path,
+                 CAST(:band_stats AS JSONB), :cloud_coverage)
             RETURNING id
         """)
-
         result = await self.db.execute(sql, {
             "id":             tile_id,
             "wkt":            wkt_polygon,
+            "min_lon":        min_lon,
+            "min_lat":        min_lat,
+            "max_lon":        max_lon,
+            "max_lat":        max_lat,
             "acquired_at":    acquired_at,
             "resolution_m":   resolution_m,
             "file_path":      file_path,
@@ -54,7 +59,11 @@ class TileRepository:
         sql = text("""
             SELECT
                 id,
-                ST_AsText(bbox) AS bbox_wkt,
+                bbox_wkt,
+                min_lon,
+                min_lat,
+                max_lon,
+                max_lat,
                 acquired_at,
                 resolution_m,
                 file_path,
@@ -62,10 +71,8 @@ class TileRepository:
                 cloud_coverage,
                 created_at
             FROM satellite_tiles
-            WHERE ST_Intersects(
-                bbox,
-                ST_MakeEnvelope(:min_lon, :min_lat, :max_lon, :max_lat, 4326)
-            )
+            WHERE min_lon <= :max_lon AND max_lon >= :min_lon
+              AND min_lat <= :max_lat AND max_lat >= :min_lat
             ORDER BY acquired_at DESC
         """)
         result = await self.db.execute(sql, {
