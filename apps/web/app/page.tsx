@@ -21,17 +21,17 @@ import {
   Sparkles,
   TrendingUp,
 } from "lucide-react";
-import RiskCard from "@/components/RiskCard";
-import ForecastChart from "@/components/ForecastChart";
+import RiskCard from "../app/components/RiskCard";
+import ForecastChart from "../app/components/ForecastChart";
 import {
   BoundingBox,
   TileAnalysis,
   RiskForecast,
   analyseTile,
   getRiskForecast,
-} from "@/lib/api";
+} from "../app/lib/api";
 
-const Map = dynamic(() => import("@/components/Map"), { ssr: false });
+const Map = dynamic(() => import("../app/components/Map"), { ssr: false });
 
 type Tab = "risk" | "forecast" | "sources";
 
