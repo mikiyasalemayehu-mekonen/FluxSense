@@ -11,7 +11,7 @@ import torch.nn.functional as F
 # SegFormer fine-tuned on ADE20K — 150 classes including
 # water, vegetation, building, road, sky, earth/soil etc.
 # Swap for a remote-sensing specific model in Phase 7 polish.
-MODEL_NAME = "nvidia/segformer-b2-finetuned-ade-512-512"
+MODEL_NAME = "nvidia/segformer-b0-finetuned-ade-512-512"  # 15MB vs 85MB
 
 # Map ADE20K class indices to our 5 risk-relevant categories
 # Full label list: https://huggingface.co/datasets/huggingface/label-files

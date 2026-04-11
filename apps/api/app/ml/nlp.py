@@ -15,8 +15,8 @@ import torch
 # ZEROSHOT_MODEL      = "facebook/bart-large-mnli"      # 1.6GB ❌
 
 # With these — same results, fraction of the RAM
-SUMMARIZATION_MODEL = "sshleifer/distilbart-cnn-6-6"  # 300MB ✅
-ZEROSHOT_MODEL      = "cross-encoder/nli-MiniLM2-L6-H768"  # 90MB ✅
+SUMMARIZATION_MODEL = "facebook/bart-base"          # 140MB vs 300MB
+ZEROSHOT_MODEL      = "typeform/distilbert-base-uncased-mnli"  # 250MB
 
 # Risk event labels we care about
 EVENT_LABELS = [
