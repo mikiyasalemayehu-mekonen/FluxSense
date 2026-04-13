@@ -37,6 +37,14 @@ export default function RiskCard({ analysis, loading }: Props) {
     );
   }
 
+  if (!risk) {
+    return (
+      <div className="p-4 text-sm text-white/50">
+        Risk data unavailable for this region.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 p-4">
 

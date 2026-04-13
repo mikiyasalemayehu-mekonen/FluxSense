@@ -43,7 +43,7 @@ export interface TileAnalysis {
     urban_exposure: number;
     event_score: number;
     explanation: string;
-  };
+  } | null;
 }
 
 export interface RiskForecast {
