@@ -21,13 +21,7 @@ class NLPResult:
 class NLPAnalyser:
     """Runs NLP via HuggingFace Inference API — no local model needed."""
 
-    def analyse(self, reports: list[dict]) -> NLPResult:
-        import asyncio
-        return asyncio.get_event_loop().run_until_complete(
-            self._analyse_async(reports)
-        )
-
-    async def _analyse_async(self, reports: list[dict]) -> NLPResult:
+    async def analyse(self, reports: list[dict]) -> NLPResult:
         from app.ml.hf_client import run_summarization, run_zero_shot
 
         if not reports:

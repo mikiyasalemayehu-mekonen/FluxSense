@@ -173,7 +173,7 @@ class SentinelService:
             try:
                 fetcher    = ReportFetcher()
                 reports    = await fetcher.fetch_all(bbox)
-                nlp_result = self._get_nlp().analyse(reports)
+                nlp_result = await self._get_nlp().analyse(reports)
                 gc.collect()
                 nlp_repo   = NLPRepository(self.db)
                 await nlp_repo.save(processed.tile_id, nlp_result)
