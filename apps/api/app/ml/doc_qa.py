@@ -1,83 +1,85 @@
 # apps/api/app/ml/doc_qa.py
 
-from dataclasses import dataclass
-from transformers import pipeline
-import pypdf
+import httpx
+import os
 import io
+from dataclasses import dataclass
+
+HF_API_URL = "https://api-inference.huggingface.co/models"
+HF_TOKEN   = os.getenv("HF_API_TOKEN", "")
 
 
 @dataclass
 class QAResult:
-    answer: str
-    score: float
+    answer:       str
+    score:        float
     context_used: str
 
 
-class DocumentQA:
-    """
-    Extracts text from a PDF and answers questions using
-    deepset/roberta-base-squad2 — fast, accurate, runs well on CPU.
-    """
-    _pipeline = None
+def extract_text_from_pdf(pdf_bytes: bytes) -> str:
+    import pypdf
+    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+    pages  = []
+    for page in reader.pages:
+        text = page.extract_text()
+        if text:
+            pages.append(text.strip())
+    return "\n\n".join(pages)
 
-    @classmethod
-    def _load_model(cls):
-        if cls._pipeline is None:
-            print("[DocQA] Loading QA model...")
-            cls._pipeline = pipeline(
-                "question-answering",
-                model="deepset/roberta-base-squad2",
-                device=-1,
-            )
-            print("[DocQA] Model loaded.")
+
+class DocumentQA:
+    """Document QA via HuggingFace Inference API — no local model."""
 
     def extract_text(self, pdf_bytes: bytes) -> str:
-        reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
-        pages = []
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                pages.append(text.strip())
-        return "\n\n".join(pages)
+        return extract_text_from_pdf(pdf_bytes)
 
     def answer(self, question: str, context: str) -> QAResult:
-        self._load_model()
-
-        # QA models have context length limits — use most relevant 2000 chars
-        # Simple approach: find the paragraph most likely to contain the answer
-        context_chunk = self._find_best_chunk(question, context)
-
-        result = self._pipeline(
-            question=question,
-            context=context_chunk,
+        import asyncio
+        return asyncio.get_event_loop().run_until_complete(
+            self._answer_async(question, context)
         )
 
-        return QAResult(
-            answer=result["answer"],
-            score=round(result["score"], 4),
-            context_used=context_chunk[:300] + "...",
-        )
+    async def _answer_async(self, question: str, context: str) -> QAResult:
+        chunk = self._find_best_chunk(question, context)
+
+        headers = {
+            "Authorization": f"Bearer {HF_TOKEN}",
+            "Content-Type":  "application/json",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{HF_API_URL}/deepset/roberta-base-squad2",
+                    headers=headers,
+                    json={"inputs": {"question": question, "context": chunk}},
+                )
+                if resp.status_code == 503:
+                    import asyncio
+                    await asyncio.sleep(20)
+                    resp = await client.post(
+                        f"{HF_API_URL}/deepset/roberta-base-squad2",
+                        headers=headers,
+                        json={"inputs": {"question": question, "context": chunk}},
+                    )
+                resp.raise_for_status()
+                result = resp.json()
+                return QAResult(
+                    answer=result.get("answer", "No answer found."),
+                    score=round(result.get("score", 0.0), 4),
+                    context_used=chunk[:300] + "...",
+                )
+        except Exception as e:
+            return QAResult(
+                answer=f"QA service unavailable: {str(e)}",
+                score=0.0,
+                context_used=chunk[:300] + "...",
+            )
 
     def _find_best_chunk(self, question: str, context: str, chunk_size: int = 2000) -> str:
-        """
-        Splits context into overlapping chunks and returns the one
-        with the most keyword overlap with the question.
-        Simple but effective for document QA without a retriever.
-        """
         if len(context) <= chunk_size:
             return context
-
         question_words = set(question.lower().split())
-        chunks = []
-        step = chunk_size // 2
-        for i in range(0, len(context), step):
-            chunk = context[i:i + chunk_size]
-            if chunk:
-                chunks.append(chunk)
-
-        # Score each chunk by keyword overlap
-        best_chunk = max(
-            chunks,
-            key=lambda c: len(question_words & set(c.lower().split())),
-        )
-        return best_chunk
+        step   = chunk_size // 2
+        chunks = [context[i:i + chunk_size] for i in range(0, len(context), step) if context[i:i + chunk_size]]
+        return max(chunks, key=lambda c: len(question_words & set(c.lower().split())))
