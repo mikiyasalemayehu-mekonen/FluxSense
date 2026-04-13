@@ -133,10 +133,12 @@ export default function Map({ onBboxDrawn, analysisResult }: Props) {
       overlayRef.current = null;
     }
 
-    const imageUrl = (showMask ? maskUrl : previewUrl).replace(
+    const imageUrl = (showMask && maskUrl ? maskUrl : previewUrl)?.replace(
       "http://api:8000",
       "http://localhost:8000"
     );
+
+    if (!imageUrl) return;
 
     overlayRef.current = L.imageOverlay(
       imageUrl,
