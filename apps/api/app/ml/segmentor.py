@@ -35,13 +35,7 @@ class SegmentationResult:
 class Segmentor:
     """Runs segmentation via HuggingFace Inference API — no local model needed."""
 
-    def run(self, geotiff_path: str, output_dir: str = "data/tiles") -> SegmentationResult:
-        import asyncio
-        return asyncio.get_event_loop().run_until_complete(
-            self._run_async(geotiff_path, output_dir)
-        )
-
-    async def _run_async(self, geotiff_path: str, output_dir: str) -> SegmentationResult:
+    async def run(self, geotiff_path: str, output_dir: str = "data/tiles") -> SegmentationResult:
         from app.ml.hf_client import run_segmentation
 
         result_id = str(uuid.uuid4())

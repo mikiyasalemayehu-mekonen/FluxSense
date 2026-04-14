@@ -30,7 +30,7 @@ async def document_question_answer(
     if not context.strip():
         raise HTTPException(status_code=422, detail="Could not extract text from PDF.")
 
-    result = _doc_qa.answer(question, context)
+    result = await _doc_qa.answer(question, context)
 
     return QAResponse(
         question=question,

@@ -141,7 +141,7 @@ class SentinelService:
             preview_url = f"{base_url}/{processed.tile_id}_preview.png"
 
             # ── 3. Segmentation ───────────────────────────────────────
-            seg_result = self._get_segmentor().run(processed.file_path)
+            seg_result = await self._get_segmentor().run(processed.file_path)
             gc.collect()
             await self.analysis_repo.save_segmentation(
                 tile_id=processed.tile_id,
@@ -173,7 +173,7 @@ class SentinelService:
             try:
                 fetcher    = ReportFetcher()
                 reports    = await fetcher.fetch_all(bbox)
-                nlp_result = await self._get_nlp().analyse(reports)
+                nlp_result = self._get_nlp().analyse(reports)
                 gc.collect()
                 nlp_repo   = NLPRepository(self.db)
                 await nlp_repo.save(processed.tile_id, nlp_result)

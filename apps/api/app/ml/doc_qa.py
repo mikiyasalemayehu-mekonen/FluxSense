@@ -33,13 +33,7 @@ class DocumentQA:
     def extract_text(self, pdf_bytes: bytes) -> str:
         return extract_text_from_pdf(pdf_bytes)
 
-    def answer(self, question: str, context: str) -> QAResult:
-        import asyncio
-        return asyncio.get_event_loop().run_until_complete(
-            self._answer_async(question, context)
-        )
-
-    async def _answer_async(self, question: str, context: str) -> QAResult:
+    async def answer(self, question: str, context: str) -> QAResult:
         chunk = self._find_best_chunk(question, context)
 
         headers = {
