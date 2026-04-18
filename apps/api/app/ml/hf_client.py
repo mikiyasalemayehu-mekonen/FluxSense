@@ -8,16 +8,18 @@ import numpy as np
 import io
 
 HF_API_URL = "https://api-inference.huggingface.co/models"
-HF_TOKEN   = os.getenv("HF_API_TOKEN", "")
+HF_TOKEN   = os.getenv("HF_API_TOKEN", "").strip()
 
-HEADERS = {
-    "Authorization": f"Bearer {HF_TOKEN}",
-    "Content-Type":  "application/json",
-}
+
+def _get_headers() -> dict:
+    """Return headers with auth only if token is set."""
+    headers = {"Content-Type": "application/json"}
+    if HF_TOKEN:
+        headers["Authorization"] = f"Bearer {HF_TOKEN}"
+    return headers
 
 
 def _image_to_base64(image_path: str) -> str:
-    """Convert a GeoTIFF to base64 PNG for HF API."""
     import rasterio
     with rasterio.open(image_path) as src:
         r = src.read(1)
@@ -32,85 +34,59 @@ def _image_to_base64(image_path: str) -> str:
 
 
 async def run_segmentation(image_path: str) -> dict:
-    """
-    Calls HF Inference API for SegFormer segmentation.
-    Returns raw API response.
-    """
-    img_b64 = _image_to_base64(image_path)
+    img_b64  = _image_to_base64(image_path)
+    headers  = _get_headers()
+    url      = f"{HF_API_URL}/nvidia/segformer-b0-finetuned-ade-512-512"
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(
-            f"{HF_API_URL}/nvidia/segformer-b0-finetuned-ade-512-512",
-            headers=HEADERS,
-            json={"inputs": img_b64},
-        )
-
-        # Model may be loading — wait and retry once
+        resp = await client.post(url, headers=headers, json={"inputs": img_b64})
         if resp.status_code == 503:
             import asyncio
-            await asyncio.sleep(20)
-            resp = await client.post(
-                f"{HF_API_URL}/nvidia/segformer-b0-finetuned-ade-512-512",
-                headers=HEADERS,
-                json={"inputs": img_b64},
-            )
-
+            await asyncio.sleep(25)
+            resp = await client.post(url, headers=headers, json={"inputs": img_b64})
         resp.raise_for_status()
         return resp.json()
 
 
 async def run_summarization(text: str) -> str:
-    """Calls HF Inference API for BART summarization."""
     if not text or len(text) < 100:
         return "No sufficient text to summarize."
 
+    headers = _get_headers()
+    url     = f"{HF_API_URL}/sshleifer/distilbart-cnn-6-6"
+
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
-            f"{HF_API_URL}/sshleifer/distilbart-cnn-6-6",
-            headers=HEADERS,
+            url, headers=headers,
             json={
                 "inputs": text[:1024],
-                "parameters": {
-                    "max_length": 150,
-                    "min_length": 40,
-                    "do_sample":  False,
-                },
+                "parameters": {"max_length": 150, "min_length": 40, "do_sample": False},
             },
         )
         if resp.status_code == 503:
             import asyncio
-            await asyncio.sleep(20)
-            resp = await client.post(
-                f"{HF_API_URL}/sshleifer/distilbart-cnn-6-6",
-                headers=HEADERS,
-                json={"inputs": text[:1024]},
-            )
+            await asyncio.sleep(25)
+            resp = await client.post(url, headers=headers, json={"inputs": text[:1024]})
         resp.raise_for_status()
         result = resp.json()
         return result[0]["summary_text"] if result else text[:200]
 
 
 async def run_zero_shot(text: str, labels: list[str]) -> dict:
-    """Calls HF Inference API for zero-shot classification."""
+    headers = _get_headers()
+    url     = f"{HF_API_URL}/typeform/distilbert-base-uncased-mnli"
+
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
-            f"{HF_API_URL}/typeform/distilbert-base-uncased-mnli",
-            headers=HEADERS,
-            json={
-                "inputs": text,
-                "parameters": {"candidate_labels": labels},
-            },
+            url, headers=headers,
+            json={"inputs": text, "parameters": {"candidate_labels": labels}},
         )
         if resp.status_code == 503:
             import asyncio
-            await asyncio.sleep(20)
+            await asyncio.sleep(25)
             resp = await client.post(
-                f"{HF_API_URL}/typeform/distilbert-base-uncased-mnli",
-                headers=HEADERS,
-                json={
-                    "inputs": text,
-                    "parameters": {"candidate_labels": labels},
-                },
+                url, headers=headers,
+                json={"inputs": text, "parameters": {"candidate_labels": labels}},
             )
         resp.raise_for_status()
         return resp.json()
