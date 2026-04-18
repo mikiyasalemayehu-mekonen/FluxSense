@@ -7,7 +7,7 @@ from PIL import Image
 import numpy as np
 import io
 
-HF_API_URL = "https://api-inference.huggingface.co/models"
+HF_API_URL = "https://router.huggingface.co/hf-inference/models"
 HF_TOKEN   = os.getenv("HF_API_TOKEN", "").strip()
 
 
